@@ -16,6 +16,15 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Duo remote booth setup
+
+The Duo booth uses Supabase Realtime for room presence and WebRTC signaling. Before testing it:
+
+1. Apply [`supabase/migrations/20261103000000_duo_rooms.sql`](./supabase/migrations/20261103000000_duo_rooms.sql) in the Supabase SQL Editor for your project.
+2. Set `NEXT_PUBLIC_SUPABASE_URL` to the project root URL (not a `/rest/v1` URL) and set `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+3. Optionally configure `NEXT_PUBLIC_TURN_URL`, `NEXT_PUBLIC_TURN_USERNAME`, and `NEXT_PUBLIC_TURN_CREDENTIAL` with short-lived TURN credentials from your provider. The app includes a public STUN server, but TURN is needed for some restrictive networks. Do not expose a long-lived TURN provider secret in a `NEXT_PUBLIC_` variable.
+4. Restart the development server and test with two devices on different networks. The room still-image data is exchanged in memory; live video is not recorded or stored.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -1,0 +1,15 @@
+export const STICKERS = [
+  { id: 'banana', label: 'Banana!', src: '/stickers/banana.svg' },
+  { id: 'surprised-face', label: 'Whaaat?!', src: '/stickers/surprised-face.svg' },
+  { id: 'haha-face', label: 'Ha ha', src: '/stickers/haha-face.svg' },
+  { id: 'laughing-face', label: 'Laughing', src: '/stickers/laughing-face.svg' },
+  { id: 'goofy-friends', label: 'The goofy trio', src: '/stickers/goofy-friends.svg' },
+  { id: 'crying-cat', label: 'Crying cat', src: '/stickers/crying-cat.png' },
+  { id: 'box-cat', label: 'Box cat', src: '/stickers/box-cat.png' },
+  { id: 'remote-cat', label: 'Remote control cat', src: '/stickers/remote-cat.png' },
+  { id: 'cuddle-cats', label: 'Cuddle cats', src: '/stickers/cuddle-cats.png' },
+  { id: 'happy-puppy', label: 'Happy puppy', src: '/stickers/happy-puppy.png' },
+  { id: 'angry-puppy', label: 'Angry puppy', src: '/stickers/angry-puppy.png' },
+  { id: 'barking-puppy', label: 'Barking puppy', src: '/stickers/barking-puppy.png' },
+  { id: 'laughing-puppy', label: 'Laughing puppy', src: '/stickers/laughing-puppy.png' },
+] as const;
