@@ -9,7 +9,7 @@ import { CaptureLayoutPreview, type CaptureLayout } from './capture-layout-previ
 import { Icon } from './icon';
 import { PoseIdeaGuide } from './pose-idea-guide';
 import { STICKERS } from './sticker-art';
-import { FRAME_THEMES, ThemeCardPreview, ThemedFrameSvg, type FrameThemeId } from './themed-frame';
+import { FRAME_LAYOUTS, FRAME_THEMES, ThemeCardPreview, ThemedFrameSvg, type FrameLayoutId, type FrameThemeId } from './themed-frame';
 import styles from './photo-booth.module.css';
 
 const GALLERY_KEY = 'snapsync-gallery-v1';
@@ -1298,7 +1298,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           node.setAttribute('href', imageCanvas.toDataURL('image/png'));
         }),
       ]);
-      svg.setAttribute('width', '1200');
+      const exportWidth = FRAME_LAYOUTS[layout].width * 2;
+      svg.setAttribute('width', String(exportWidth));
       svg.setAttribute('height', '3600');
       const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
       const svgUrl = URL.createObjectURL(svgBlob);
@@ -1309,7 +1310,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
         URL.revokeObjectURL(svgUrl);
       }
       const canvas = document.createElement('canvas');
-      canvas.width = 1200;
+      canvas.width = exportWidth;
       canvas.height = 3600;
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Could not prepare the photo layout.');
@@ -1396,6 +1397,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       ? 'Your photos are ready to customize.'
       : `${remainingPhotoCount} ${remainingPhotoCount === 1 ? 'photo' : 'photos'} left.`;
   const frameTheme = getFrameTheme(frameColor, customFrameColor);
+  const selectedLayout: FrameLayoutId = layout ?? 'strip';
   const photoDesignClass = styles.photoDesign;
 
   return (
@@ -1762,16 +1764,24 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
         {step === 3 && (
           <div className={styles.createGrid}>
             <section className={styles.previewPanel}>
-              <div className={styles.previewHeading}><strong>Live preview</strong><span>{allCaptured.length} photos</span></div>
+              <div className={styles.previewHeading}><strong>Live preview</strong><span>{allCaptured.length} {allCaptured.length === 1 ? 'photo' : 'photos'}</span></div>
               <div
                 className={photoDesignClass}
+                data-layout={selectedLayout}
                 ref={photoDesignRef}
+                style={{
+                  aspectRatio: `${FRAME_LAYOUTS[selectedLayout].width} / ${FRAME_LAYOUTS[selectedLayout].height}`,
+                  width: selectedLayout === 'strip' || selectedLayout === 'trio'
+                    ? 'min(285px, calc(100% - 40px))'
+                    : 'min(430px, calc(100% - 40px))',
+                }}
               >
                 <ThemedFrameSvg
                   customMessage={customFrameMessage}
                   duoPairs={duoPhotoPairs}
                   frameColor={frameTheme.frameColor}
                   frameTextColor={frameTheme.textColor}
+                  layoutId={selectedLayout}
                   name={frameName}
                   photoPositions={photoPositions}
                   photos={allCaptured}
@@ -1918,7 +1928,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                 </div>
               </div>
               <div className={styles.optionGroup}><h2><i>02</i> Move your photos</h2>{photos.length > 0 ? <><p className={styles.hint}>{isDuo ? 'Each Duo shot contains separate Host and Guest photos. Move both people together inside the selected frame.' : 'Select a photo and adjust its position inside the frame.'}</p><div className={styles.shotChoices}>{photos.map((photo, index) => <button aria-pressed={selectedPhoto === index} className={selectedPhoto === index ? styles.selectedShot : ''} key={index + '-' + photo.slice(-16)} onClick={() => setSelectedPhoto(index)} type="button"><img alt="" src={photo} />Photo {index + 1}</button>)}</div><label className={styles.adjustAllLabel}><input checked={alignAllPhotos} onChange={(event) => setAlignAllPhotos(event.target.checked)} type="checkbox" /> Move all photos together</label><label className={styles.sliderLabel}>Left and right<input max="100" min="0" onChange={(event) => updatePhotoPosition('x', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).x} /></label><label className={styles.sliderLabel}>Up and down<input max="100" min="0" onChange={(event) => updatePhotoPosition('y', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).y} /></label></> : <p className={styles.hint}>Take a photo first, then slide to move it inside its frame.</p>}</div>
-              <div className={styles.optionGroup}><h2><i>03</i> Your photo layout</h2><p className={styles.selectedLayoutSummary}>{PHOTO_LAYOUTS.find((option) => option.id === layout)?.label} · {photoLimit} photos</p><p className={styles.hint}>Frame themes use a four-slot strip; your selected photo layout stays unchanged for capture.</p></div>
+              <div className={styles.optionGroup}><h2><i>03</i> Your photo layout</h2><p className={styles.selectedLayoutSummary}>{PHOTO_LAYOUTS.find((option) => option.id === layout)?.label} · {photoLimit} {photoLimit === 1 ? 'photo' : 'photos'}</p><p className={styles.hint}>Your layout controls the photo count and positions. Themes add colors, text, and decorations.</p></div>
               <div className={styles.optionGroup}>
                 <h2><i>04</i> Text on frame</h2>
                 <label className={styles.toggleRow}>
