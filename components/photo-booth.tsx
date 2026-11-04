@@ -18,6 +18,10 @@ const CAMERA_FILTERS = [
   { id: 'cool', label: 'Cool', css: 'saturate(.82) hue-rotate(12deg)' },
   { id: 'mono', label: 'B&W', css: 'grayscale(1)' },
   { id: 'vintage', label: 'Vintage', css: 'sepia(.38) contrast(.94) saturate(.82)' },
+  { id: 'rosy', label: 'Rosy', css: 'sepia(.16) saturate(1.28) hue-rotate(326deg)' },
+  { id: 'golden', label: 'Golden', css: 'sepia(.32) saturate(1.3) brightness(1.06)' },
+  { id: 'soft', label: 'Soft', css: 'brightness(1.1) contrast(.88) saturate(.92)' },
+  { id: 'fade', label: 'Fade', css: 'brightness(1.06) contrast(.84) saturate(.76)' },
 ] as const;
 const FRAME_COLORS = {
   white: { id: 'white', label: 'White', frameColor: '#FFFFFF', textColor: '#1A1A1A', accentColor: '#D6FF5F' },
