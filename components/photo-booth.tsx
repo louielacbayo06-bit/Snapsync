@@ -9,6 +9,7 @@ import { CaptureLayoutPreview, type CaptureLayout } from './capture-layout-previ
 import { Icon } from './icon';
 import { PoseIdeaGuide } from './pose-idea-guide';
 import { STICKERS } from './sticker-art';
+import { FRAME_THEMES, ThemeCardPreview, ThemedFrameSvg, type FrameThemeId } from './themed-frame';
 import styles from './photo-booth.module.css';
 
 const GALLERY_KEY = 'snapsync-gallery-v1';
@@ -134,6 +135,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraStageRef = useRef<HTMLDivElement>(null);
   const photoDesignRef = useRef<HTMLDivElement>(null);
+  const frameSvgRef = useRef<SVGSVGElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peerIdRef = useRef('');
@@ -189,6 +191,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
   const [customFrameColor, setCustomFrameColor] = useState<string>(FRAME_COLORS.custom.frameColor);
   const [showFrameText, setShowFrameText] = useState(true);
   const [customFrameMessage, setCustomFrameMessage] = useState('');
+  const [frameThemeId, setFrameThemeId] = useState<FrameThemeId>('classic');
+  const [frameName, setFrameName] = useState('');
 
   const [stickers, setStickers] = useState<StickerPlacement[]>([]);
   const [selectedStickerKey, setSelectedStickerKey] = useState<string | null>(null);
@@ -511,6 +515,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           } else if (message.event === 'design-update' && roomRoleRef.current === 'guest') {
             const state = message.payload;
             if (typeof state.frameColor === 'string' && state.frameColor in FRAME_COLORS) setFrameColor(state.frameColor as FrameColor);
+            if (typeof state.frameThemeId === 'string' && state.frameThemeId in FRAME_THEMES) setFrameThemeId(state.frameThemeId as FrameThemeId);
+            if (typeof state.frameName === 'string') setFrameName(state.frameName);
             if (typeof state.customFrameColor === 'string') setCustomFrameColor(state.customFrameColor);
             if (typeof state.showFrameText === 'boolean') setShowFrameText(state.showFrameText);
             if (typeof state.customFrameMessage === 'string') setCustomFrameMessage(state.customFrameMessage);
@@ -650,6 +656,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
             customFrameColor,
             showFrameText,
             customFrameMessage,
+            frameThemeId,
+            frameName,
             stickers,
             layout,
             photoPositions,
@@ -663,7 +671,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
         if (!sent) lastFinalImageSentRef.current = '';
       });
     }
-  }, [createdImage, customFrameColor, customFrameMessage, frameColor, isDuo, layout, photoPositions, roomParticipantDetails, roomPhase, roomRole, showFrameText, stickers]);
+  }, [createdImage, customFrameColor, customFrameMessage, frameColor, frameName, frameThemeId, isDuo, layout, photoPositions, roomParticipantDetails, roomPhase, roomRole, showFrameText, stickers]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1250,150 +1258,63 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
 
   async function makeCreation() {
     if (isDuo && roomRole !== 'host') return;
-    const allPhotoFrames = photos.map((image, index) => ({
-      image,
-      position: photoPositions[index] ?? { x: 50, y: 50 },
-    }));
-    if (!allPhotoFrames.length || !layout) return;
+    if (!photos.length || !layout || !frameSvgRef.current) return;
     setBusy(true);
     setCameraError('');
     try {
-      const [images, duoImages, stickerImages] = await Promise.all([
-        Promise.all(allPhotoFrames.map(({ image }) => loadImage(image))),
-        Promise.all(duoPhotoPairs.map(async (pair) => pair ? {
-          host: await loadImage(pair.host),
-          guest: await loadImage(pair.guest),
-        } : undefined)),
-        Promise.all(selectedStickers.map(async (sticker) => ({
-          ...sticker,
-          image: await loadImage(sticker.definition.src),
-        }))),
+      await document.fonts.ready;
+      const svg = frameSvgRef.current.cloneNode(true) as SVGSVGElement;
+      const photoNodes = Array.from(svg.querySelectorAll<SVGImageElement>('image[data-frame-photo]'));
+      const stickerNodes = Array.from(svg.querySelectorAll<SVGImageElement>('image[data-frame-sticker]'));
+      await Promise.all([
+        ...photoNodes.map(async (node) => {
+          const source = node.getAttribute('href');
+          if (!source) throw new Error('A photo could not be loaded.');
+          const image = await loadImage(source);
+          const width = Number(node.dataset.fitWidth);
+          const height = Number(node.dataset.fitHeight);
+          const x = Number(node.dataset.fitX);
+          const y = Number(node.dataset.fitY);
+          const positionX = Number(node.dataset.positionX);
+          const positionY = Number(node.dataset.positionY);
+          const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+          const drawWidth = image.naturalWidth * scale;
+          const drawHeight = image.naturalHeight * scale;
+          node.setAttribute('x', String(x + (width - drawWidth) * positionX / 100));
+          node.setAttribute('y', String(y + (height - drawHeight) * positionY / 100));
+          node.setAttribute('width', String(drawWidth));
+          node.setAttribute('height', String(drawHeight));
+        }),
+        ...stickerNodes.map(async (node) => {
+          const source = node.getAttribute('href');
+          if (!source) throw new Error('A sticker could not be loaded.');
+          const image = await loadImage(source);
+          const imageCanvas = document.createElement('canvas');
+          imageCanvas.width = image.naturalWidth;
+          imageCanvas.height = image.naturalHeight;
+          const imageContext = imageCanvas.getContext('2d');
+          if (!imageContext) throw new Error('A sticker could not be prepared.');
+          imageContext.drawImage(image, 0, 0);
+          node.setAttribute('href', imageCanvas.toDataURL('image/png'));
+        }),
       ]);
-      const frame = getFrameTheme(frameColor, customFrameColor);
-      const width = layout === 'strip' || layout === 'trio' ? 600 : 1200;
-      const height = 1800;
-      const selectedImages = images.slice(0, photoLimit);
-      const photoSlotIndexes = layout === 'doubleStrip'
-        ? [...selectedImages.keys(), ...selectedImages.keys()]
-        : [...selectedImages.keys()];
-      const photoSlots = photoSlotIndexes.map((slotIndex) => {
-        const index = layout === 'doubleStrip' ? slotIndex % selectedImages.length : slotIndex;
-        if (layout === 'strip') {
-          return { x: 20, y: 20 + index * 360, width: 560, height: 350, index };
-        }
-        if (layout === 'doubleStrip') {
-          return {
-            x: slotIndex < selectedImages.length ? 30 : 650,
-            y: 30 + (slotIndex % selectedImages.length) * 344,
-            width: 520,
-            height: 326,
-            index,
-          };
-        }
-        if (layout === 'grid') {
-          return {
-            x: index % 2 === 0 ? 40 : 625,
-            y: index < 2 ? 40 : 715,
-            width: 535,
-            height: 655,
-            index,
-          };
-        }
-        if (layout === 'trio') {
-          return { x: 40, y: 30 + index * 446, width: 520, height: 428, index };
-        }
-        return { x: 80, y: 80, width: 1020, height: 1020, index };
-      });
-      const footerHeight = layout === 'strip' || layout === 'doubleStrip'
-        ? layout === 'strip' ? 324 : 384
-        : layout === 'trio' ? 450 : layout === 'grid' ? 430 : 700;
-      const footerStart = layout === 'strip' || layout === 'doubleStrip'
-        ? layout === 'strip' ? 1460 : 1416
-        : layout === 'trio' ? 1350 : layout === 'grid' ? 1370 : 1100;
+      svg.setAttribute('width', '1200');
+      svg.setAttribute('height', '3600');
+      const svgBlob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      let renderedSvg: HTMLImageElement;
+      try {
+        renderedSvg = await loadImage(svgUrl);
+      } finally {
+        URL.revokeObjectURL(svgUrl);
+      }
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = 1200;
+      canvas.height = 3600;
       const context = canvas.getContext('2d');
       if (!context) throw new Error('Could not prepare the photo layout.');
-      context.fillStyle = frame.frameColor;
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      if (layout === 'grid') {
-        context.strokeStyle = '#b49a67';
-        context.lineWidth = 5;
-      }
-      for (const slot of photoSlots) {
-        const image = selectedImages[slot.index];
-        if (!image) continue;
-        const imageHeight = slot.height;
-        context.fillStyle = '#ffffff';
-        context.fillRect(slot.x, slot.y, slot.width, slot.height);
-        context.save();
-        context.beginPath();
-        context.rect(slot.x, slot.y, slot.width, imageHeight);
-        context.clip();
-        const position = allPhotoFrames[slot.index]?.position ?? { x: 50, y: 50 };
-        const duoImage = duoImages[slot.index];
-        const drawPositionedCover = (
-          source: HTMLImageElement,
-          x: number,
-          y: number,
-          width: number,
-          height: number,
-        ) => {
-          const scale = Math.max(width / source.width, height / source.height);
-          const drawWidth = source.width * scale;
-          const drawHeight = source.height * scale;
-          context.drawImage(
-            source,
-            x + (width - drawWidth) * position.x / 100,
-            y + (height - drawHeight) * position.y / 100,
-            drawWidth,
-            drawHeight,
-          );
-        };
-        if (isDuo && duoImage) {
-          drawPositionedCover(duoImage.host, slot.x, slot.y, slot.width / 2, imageHeight);
-          drawPositionedCover(duoImage.guest, slot.x + slot.width / 2, slot.y, slot.width / 2, imageHeight);
-        } else {
-          drawPositionedCover(image, slot.x, slot.y, slot.width, imageHeight);
-        }
-        context.restore();
-        if (layout === 'grid') context.strokeRect(slot.x, slot.y, slot.width, slot.height);
-      }
-      for (const sticker of stickerImages) {
-        const stickerSize = width * sticker.size / 100;
-        const stickerX = Math.max(stickerSize / 2, Math.min(width - stickerSize / 2, width * sticker.x / 100));
-        const stickerY = Math.max(stickerSize / 2, Math.min(canvas.height - stickerSize / 2, canvas.height * sticker.y / 100));
-        context.save();
-        context.translate(stickerX, stickerY);
-        context.rotate(sticker.rotation * Math.PI / 180);
-        context.drawImage(
-          sticker.image,
-          -stickerSize / 2,
-          -stickerSize / 2,
-          stickerSize,
-          stickerSize,
-        );
-        context.restore();
-      }
-      if (showFrameText) {
-        context.fillStyle = frame.textColor;
-        context.textAlign = 'center';
-        const scale = width / 600;
-        const polaroid = layout === 'polaroid';
-        const titleY = polaroid
-          ? footerStart + footerHeight * 0.51
-          : footerStart + footerHeight * 0.43;
-        if (customFrameMessage.trim()) {
-          context.font = `600 ${Math.round(30 * scale)}px Arial, sans-serif`;
-          context.fillText(customFrameMessage.trim(), width / 2, titleY - 75 * scale, width * 0.88);
-        }
-        context.font = `italic ${Math.round((polaroid ? 68 : 54) * scale)}px Georgia, serif`;
-        context.fillText('SnapSync', width / 2, titleY);
-        context.font = `600 ${Math.round(18 * scale)}px Arial, sans-serif`;
-        context.fillText('SNAP · SYNC · SMILE', width / 2, titleY + 92 * scale);
-      }
-      const finalImage = canvas.toDataURL('image/jpeg', 0.88);
+      context.drawImage(renderedSvg, 0, 0, canvas.width, canvas.height);
+      const finalImage = canvas.toDataURL('image/jpeg', 0.94);
       setCreatedImage(finalImage);
       stopCamera();
       if (isDuo) {
@@ -1474,45 +1395,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     remainingPhotoCount === 0
       ? 'Your photos are ready to customize.'
       : `${remainingPhotoCount} ${remainingPhotoCount === 1 ? 'photo' : 'photos'} left.`;
-  const selectedLayout: Layout = layout ?? 'strip';
   const frameTheme = getFrameTheme(frameColor, customFrameColor);
-  const photoDesignClass = [
-    styles.photoDesign,
-    styles[`design${selectedLayout[0].toUpperCase()}${selectedLayout.slice(1)}`],
-    ...(!showFrameText ? [styles.textHidden] : []),
-  ].join(' ');
-  const layoutPhotoCount = PHOTO_LAYOUTS.find((option) => option.id === selectedLayout)?.photoCount ?? 4;
-  const photoIndexes = Array.from({ length: Math.min(layoutPhotoCount, allCaptured.length) }, (_, index) => index);
-  const previewPhotoIndexes = selectedLayout === 'doubleStrip'
-    ? [...photoIndexes, ...photoIndexes]
-    : photoIndexes;
-  const photoPreviews = previewPhotoIndexes.flatMap((photoIndex, previewIndex) => {
-    const previewPhoto = allCapturedFrames[photoIndex];
-    if (!previewPhoto) return [];
-    const duoPair = duoPhotoPairs[photoIndex];
-    return [
-      <div className={styles.photoCell} key={`${photoIndex}-${previewIndex}`}>
-        {isDuo && duoPair ? (
-          <div className={styles.duoPhotoPair}>
-            {[duoPair.host, duoPair.guest].map((image, personIndex) => (
-              <img
-                alt={personIndex === 0 ? 'Host in photo ' + (photoIndex + 1) : 'Guest in photo ' + (photoIndex + 1)}
-                key={personIndex === 0 ? 'host' : 'guest'}
-                src={image}
-                style={{ objectPosition: `${previewPhoto.position.x}% ${previewPhoto.position.y}%` }}
-              />
-            ))}
-          </div>
-        ) : (
-          <img
-            alt={'Preview photo ' + (photoIndex + 1)}
-            src={previewPhoto.image}
-            style={{ objectPosition: previewPhoto.position.x + '% ' + previewPhoto.position.y + '%' }}
-          />
-        )}
-      </div>,
-    ];
-  });
+  const photoDesignClass = styles.photoDesign;
 
   return (
     <main className={styles.page}>
@@ -1548,7 +1432,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
             {step === 1 ? isDuo ? <>Invite your <span>person.</span></> : <>A photo layout, <span>made by you.</span></> : step === 2 ? <>Take your <span>photos.</span></> : step === 3 ? <>Make it <span>your style.</span></> : <>Your photos are <span>ready.</span></>}
           </h1>
           <p>
-            {step === 1 ? isDuo ? 'Invite a friend to take photos with you.' : 'Take a few pictures, pick a frame, and keep your favorite moments.' : step === 2 ? 'Choose a layout, then take the number of photos it shows.' : step === 3 ? 'Choose a black or white frame, adjust your photos, and show or hide frame text.' : 'Save your photo to your device or share it with someone.'}
+            {step === 1 ? isDuo ? 'Invite a friend to take photos with you.' : 'Take a few pictures, pick a frame, and keep your favorite moments.' : step === 2 ? 'Choose a layout, then take the number of photos it shows.' : step === 3 ? 'Pick a theme, position your photos, and add your own words.' : 'Save your photo to your device or share it with someone.'}
           </p>
         </div>
 
@@ -1881,15 +1765,28 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
               <div className={styles.previewHeading}><strong>Live preview</strong><span>{allCaptured.length} photos</span></div>
               <div
                 className={photoDesignClass}
-                data-layout={selectedLayout}
                 ref={photoDesignRef}
-                style={{
-                  backgroundColor: frameTheme.frameColor,
-                  borderColor: frameTheme.textColor,
-                  color: frameTheme.textColor,
-                }}
               >
-                {photoPreviews.length ? photoPreviews : <div aria-hidden="true" className={styles.emptyPreview} />}
+                <ThemedFrameSvg
+                  customMessage={customFrameMessage}
+                  duoPairs={duoPhotoPairs}
+                  frameColor={frameTheme.frameColor}
+                  frameTextColor={frameTheme.textColor}
+                  name={frameName}
+                  photoPositions={photoPositions}
+                  photos={allCaptured}
+                  showText={showFrameText}
+                  stickers={selectedStickers.map((sticker) => ({
+                    key: sticker.key,
+                    src: sticker.definition.src,
+                    x: sticker.x,
+                    y: sticker.y,
+                    size: sticker.size,
+                    rotation: sticker.rotation,
+                  }))}
+                  svgRef={frameSvgRef}
+                  themeId={frameThemeId}
+                />
                 {selectedStickers.map((sticker) => (
                   <div
                     className={styles.placedSticker}
@@ -1931,7 +1828,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                       style={{ transform: `rotate(${sticker.rotation}deg)` }}
                       type="button"
                     >
-                      <img alt="" draggable={false} src={sticker.definition.src} />
+                      <img alt="" aria-hidden="true" draggable={false} src={sticker.definition.src} />
                     </button>
                     <button
                       aria-label={`Remove ${sticker.definition.label} sticker`}
@@ -1946,13 +1843,6 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                     </button>
                   </div>
                 ))}
-                <footer aria-hidden={!showFrameText} className={styles.frameText}>
-                  {customFrameMessage.trim() && (
-                    <span className={styles.userFrameMessage}>{customFrameMessage.trim()}</span>
-                  )}
-                  <strong>SnapSync</strong>
-                  <span>SNAP · SYNC · SMILE</span>
-                </footer>
               </div>
             </section>
             <section className={styles.customizePanel}>
@@ -1965,13 +1855,32 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                 </div>
               ) : <>
               <div className={styles.optionGroup}>
-                <h2><i>01</i> Frame background</h2>
-                <p className={styles.hint}>Choose a frame color.</p>
+                <h2><i>01</i> Theme</h2>
+                <p className={styles.hint}>Choose a frame style for your photos.</p>
+                <div aria-label="Theme" className={styles.frameThemeChoices}>
+                  {(Object.keys(FRAME_THEMES) as FrameThemeId[]).map((themeId) => (
+                    <button
+                      aria-pressed={frameThemeId === themeId}
+                      className={`${styles.frameThemeChoice} ${frameThemeId === themeId ? styles.selectedFrameTheme : ''}`}
+                      key={themeId}
+                      onClick={() => setFrameThemeId(themeId)}
+                      type="button"
+                    >
+                      <ThemeCardPreview themeId={themeId} />
+                      <span>{FRAME_THEMES[themeId].label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div aria-disabled={frameThemeId !== 'classic'} className={`${styles.optionGroup} ${frameThemeId !== 'classic' ? styles.disabledFrameColors : ''}`}>
+                <h2><i>02</i> Frame background</h2>
+                <p className={styles.hint}>{frameThemeId === 'classic' ? 'Choose a frame color.' : 'This theme has its own colors.'}</p>
                 <div aria-label="Frame background" className={styles.frameColorChoices}>
                   {PRESET_FRAME_COLORS.map((theme) => (
                     <button
                       aria-pressed={frameColor === theme.id}
                       className={`${styles.frameColorChoice} ${frameColor === theme.id ? styles.selectedFrameColor : ''}`}
+                      disabled={frameThemeId !== 'classic'}
                       key={theme.id}
                       onClick={() => setFrameColor(theme.id)}
                       style={{ borderColor: frameColor === theme.id ? theme.accentColor : undefined }}
@@ -1985,6 +1894,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                     <button
                       aria-pressed={frameColor === 'custom'}
                       className={`${styles.frameColorChoice} ${frameColor === 'custom' ? styles.selectedFrameColor : ''}`}
+                      disabled={frameThemeId !== 'classic'}
                       onClick={() => setFrameColor('custom')}
                       style={{ borderColor: frameColor === 'custom' ? FRAME_COLORS.custom.accentColor : undefined }}
                       type="button"
@@ -1995,6 +1905,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                     <input
                       aria-label="Custom frame color"
                       className={styles.customFrameColorPicker}
+                      disabled={frameThemeId !== 'classic'}
                       onChange={(event) => {
                         setCustomFrameColor(event.target.value.toUpperCase());
                         setFrameColor('custom');
@@ -2007,7 +1918,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                 </div>
               </div>
               <div className={styles.optionGroup}><h2><i>02</i> Move your photos</h2>{photos.length > 0 ? <><p className={styles.hint}>{isDuo ? 'Each Duo shot contains separate Host and Guest photos. Move both people together inside the selected frame.' : 'Select a photo and adjust its position inside the frame.'}</p><div className={styles.shotChoices}>{photos.map((photo, index) => <button aria-pressed={selectedPhoto === index} className={selectedPhoto === index ? styles.selectedShot : ''} key={index + '-' + photo.slice(-16)} onClick={() => setSelectedPhoto(index)} type="button"><img alt="" src={photo} />Photo {index + 1}</button>)}</div><label className={styles.adjustAllLabel}><input checked={alignAllPhotos} onChange={(event) => setAlignAllPhotos(event.target.checked)} type="checkbox" /> Move all photos together</label><label className={styles.sliderLabel}>Left and right<input max="100" min="0" onChange={(event) => updatePhotoPosition('x', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).x} /></label><label className={styles.sliderLabel}>Up and down<input max="100" min="0" onChange={(event) => updatePhotoPosition('y', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).y} /></label></> : <p className={styles.hint}>Take a photo first, then slide to move it inside its frame.</p>}</div>
-              <div className={styles.optionGroup}><h2><i>03</i> Your photo layout</h2><p className={styles.selectedLayoutSummary}>{PHOTO_LAYOUTS.find((option) => option.id === layout)?.label} · {photoLimit} photos</p></div>
+              <div className={styles.optionGroup}><h2><i>03</i> Your photo layout</h2><p className={styles.selectedLayoutSummary}>{PHOTO_LAYOUTS.find((option) => option.id === layout)?.label} · {photoLimit} photos</p><p className={styles.hint}>Frame themes use a four-slot strip; your selected photo layout stays unchanged for capture.</p></div>
               <div className={styles.optionGroup}>
                 <h2><i>04</i> Text on frame</h2>
                 <label className={styles.toggleRow}>
@@ -2017,12 +1928,23 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                 </label>
                 <p className={styles.hint}>Turn this off to keep the frame and leave its text areas blank.</p>
                 <label className={styles.sliderLabel}>
+                  Name
+                  <input
+                    className={styles.messageInput}
+                    maxLength={24}
+                    onChange={(event) => setFrameName(event.target.value)}
+                    placeholder="Your name"
+                    type="text"
+                    value={frameName}
+                  />
+                </label>
+                <label className={styles.sliderLabel}>
                   Custom frame message
                   <input
                     className={styles.messageInput}
                     maxLength={60}
                     onChange={(event) => setCustomFrameMessage(event.target.value)}
-                    placeholder="Happy Birthday!"
+                    placeholder={FRAME_THEMES[frameThemeId].defaultMessage}
                     type="text"
                     value={customFrameMessage}
                   />
