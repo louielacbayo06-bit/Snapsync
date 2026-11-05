@@ -474,7 +474,6 @@ export function ThemedFrameSvg({
         const pair = duoPairs[slot.photoIndex];
         const photo = photos[slot.photoIndex];
         const radius = theme.slotStyle.cornerRadius;
-        const photoLabel = slot.photoIndex + 1;
         return <g key={index}>
           {theme.slotStyle.shadow && <rect fill={theme.slotStyle.shadow.color} height={slot.height} rx={radius} width={slot.width} x={slot.x + theme.slotStyle.shadow.offset} y={slot.y + theme.slotStyle.shadow.offset} />}
           <rect fill={theme.slotStyle.fill} height={slot.height} rx={radius} stroke={theme.slotStyle.borderColor} strokeWidth={theme.slotStyle.borderWidth} width={slot.width} x={slot.x} y={slot.y} />
@@ -487,8 +486,6 @@ export function ThemedFrameSvg({
           ) : photo ? (
             <PhotoImage clipId={clipId} height={innerHeight} position={position} src={photo} width={innerWidth} x={innerX} y={innerY} />
           ) : null}
-          {showText && themeId !== 'classic' && <text fill={themeId === 'retro-film' ? '#BDAF8D' : themeId === 'love' ? '#EFC8D4' : '#D8CCDB'} fontFamily={theme.fonts.body} fontSize={Math.min(18, slot.height * 0.055)} opacity=".9" textAnchor="middle" x={slot.x + slot.width / 2} y={slot.y + slot.height - 18}>{`PHOTO ${slot.photoIndex + 1}`}</text>}
-          {themeId === 'retro-film' && showText && <text fill={theme.textColors.secondary} fontFamily={theme.fonts.body} fontSize="15" fontWeight="700" textAnchor="middle" x={slot.x - 12} y={slot.y + 24}>{photoLabel}</text>}
           {theme.slotStyle.borderWidth > 0 && <rect fill="none" height={slot.height} pointerEvents="none" rx={radius} stroke={theme.slotStyle.borderColor} strokeWidth={theme.slotStyle.borderWidth} width={slot.width} x={slot.x} y={slot.y} />}
         </g>;
       })}
