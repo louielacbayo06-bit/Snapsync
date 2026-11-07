@@ -22,8 +22,8 @@ The Duo booth uses Supabase Realtime for room presence and WebRTC signaling. Bef
 
 1. Apply [`supabase/migrations/20261103000000_duo_rooms.sql`](./supabase/migrations/20261103000000_duo_rooms.sql) in the Supabase SQL Editor for your project.
 2. Set `NEXT_PUBLIC_SUPABASE_URL` to the project root URL (not a `/rest/v1` URL) and set `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-3. Optionally configure `NEXT_PUBLIC_TURN_URL`, `NEXT_PUBLIC_TURN_USERNAME`, and `NEXT_PUBLIC_TURN_CREDENTIAL` with short-lived TURN credentials from your provider. The app includes a public STUN server, but TURN is needed for some restrictive networks. Do not expose a long-lived TURN provider secret in a `NEXT_PUBLIC_` variable.
-4. Restart the development server and test with two devices on different networks. The room still-image data is exchanged in memory; live video is not recorded or stored.
+3. Configure a TURN relay. STUN alone cannot connect peers on some different Wi-Fi/mobile networks. Sign up for [Metered Open Relay](https://dashboard.metered.ca/signup?tool=turnserver), create a TURN credential, then set `NEXT_PUBLIC_METERED_TURN_CREDENTIAL_URL` to its credential-scoped URL in Vercel. The URL format is `https://<appname>.metered.live/api/v1/turn/credentials?apiKey=<credential-scoped-api-key>`; see [Metered's credential API docs](https://www.metered.ca/docs/turn-rest-api/get-credential/). Use the credential API key, not your Metered account secret. The app fetches fresh ICE server credentials when a room is joined. Alternatively, set `NEXT_PUBLIC_TURN_URL`, `NEXT_PUBLIC_TURN_USERNAME`, and `NEXT_PUBLIC_TURN_CREDENTIAL` to short-lived credentials from another TURN provider; never put a long-lived provider secret in a `NEXT_PUBLIC_` variable.
+4. After changing Vercel environment variables, create a new production deployment so the client configuration is updated. Test with two devices on different networks. The room still-image data is exchanged in memory; live video is not recorded or stored.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

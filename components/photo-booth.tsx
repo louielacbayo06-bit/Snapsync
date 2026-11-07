@@ -87,15 +87,69 @@ function createRoomToken() {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function getRoomIceServers(): RTCIceServer[] {
-  const iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+type RoomIceServerConfig = { iceServers: RTCIceServer[]; hasTurnServer: boolean; error: string };
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+function isAuthenticatedTurnServer(value: unknown): value is RTCIceServer {
+  if (typeof value !== 'object' || value === null || !('urls' in value) || !('username' in value) || !('credential' in value)) {
+    return false;
+  }
+  const urls = value.urls;
+  const hasTurnUrl = (typeof urls === 'string' ? [urls] : Array.isArray(urls) ? urls : [])
+    .some((url) => typeof url === 'string' && /^turns?:/i.test(url));
+  return hasTurnUrl && typeof value.username === 'string' && typeof value.credential === 'string';
+}
+
+async function getRoomIceServers(): Promise<RoomIceServerConfig> {
   const urls = process.env.NEXT_PUBLIC_TURN_URL?.split(',').map((url) => url.trim()).filter(Boolean);
   const username = process.env.NEXT_PUBLIC_TURN_USERNAME;
   const credential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
   if (urls?.length && username && credential) {
-    iceServers.push({ urls, username, credential });
+    return {
+      iceServers: [...FALLBACK_ICE_SERVERS, { urls, username, credential }],
+      hasTurnServer: true,
+      error: '',
+    };
   }
-  return iceServers;
+  const credentialsUrl = process.env.NEXT_PUBLIC_METERED_TURN_CREDENTIAL_URL;
+  if (!credentialsUrl) {
+    return {
+      iceServers: FALLBACK_ICE_SERVERS,
+      hasTurnServer: false,
+      error: 'This deployment has no TURN relay configured. A relay is needed to connect cameras across some networks.',
+    };
+  }
+
+  try {
+    const response = await fetch(credentialsUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      return {
+        iceServers: FALLBACK_ICE_SERVERS,
+        hasTurnServer: false,
+        error: `The TURN provider could not issue relay credentials (HTTP ${response.status}).`,
+      };
+    }
+    const data: unknown = await response.json();
+    const turnServers = Array.isArray(data) ? data.filter(isAuthenticatedTurnServer) : [];
+    if (turnServers.length === 0) {
+      return {
+        iceServers: FALLBACK_ICE_SERVERS,
+        hasTurnServer: false,
+        error: 'The TURN provider returned no valid relay servers. Check the TURN credential URL.',
+      };
+    }
+    return {
+      iceServers: [...FALLBACK_ICE_SERVERS, ...turnServers],
+      hasTurnServer: true,
+      error: '',
+    };
+  } catch {
+    return {
+      iceServers: FALLBACK_ICE_SERVERS,
+      hasTurnServer: false,
+      error: 'The TURN provider could not be reached. Check the TURN credential URL and try again.',
+    };
+  }
 }
 
 function drawContain(context: CanvasRenderingContext2D, source: HTMLImageElement, x: number, y: number, width: number, height: number) {
@@ -226,9 +280,14 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     const pendingCandidates = pendingCandidatesRef.current;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let heartbeat: number | null = null;
+    let iceServerConfig: RoomIceServerConfig = {
+      iceServers: FALLBACK_ICE_SERVERS,
+      hasTurnServer: false,
+      error: 'TURN relay credentials have not loaded.',
+    };
     const makePeerConnection = (otherPeerId: string) => {
       const connection = new RTCPeerConnection({
-        iceServers: getRoomIceServers(),
+        iceServers: iceServerConfig.iceServers,
       });
       peerConnections.set(otherPeerId, connection);
       const localStream = streamRef.current;
@@ -257,8 +316,12 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
         };
       };
       connection.onconnectionstatechange = () => {
-        if (connection.connectionState === 'failed' || connection.connectionState === 'disconnected') {
-          setRoomError('Poor connection: live video was interrupted. Check your network; the room will try to reconnect.');
+        if (connection.connectionState === 'failed') {
+          setRoomError(iceServerConfig.hasTurnServer
+            ? 'Could not connect to the other camera. Check your network and TURN provider settings, then rejoin the room.'
+            : `${iceServerConfig.error} Ask the site owner to configure TURN, then rejoin the room.`);
+        } else if (connection.connectionState === 'disconnected') {
+          setRoomError('Live video was interrupted. Checking the connection…');
         } else if (connection.connectionState === 'connected') {
           setRoomError('');
         }
@@ -334,6 +397,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       if (room.phase === 'save') setStep(4);
       setRoomError('');
 
+      iceServerConfig = await getRoomIceServers();
+      if (!mounted) return;
       channel = supabase.channel(`snapsync-room-${roomCode}`, {
         config: { broadcast: { self: false, ack: true }, presence: { key: peerId } },
       });
