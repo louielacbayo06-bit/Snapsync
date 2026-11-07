@@ -473,7 +473,10 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           } else if (message.event === 'session-phase' && typeof message.payload.phase === 'string') {
             const phase = message.payload.phase as RoomPhase;
             setRoomPhase(phase);
-            if (phase === 'design') setStep(3);
+            if (phase === 'design') {
+              stopCameraRef.current();
+              setStep(3);
+            }
             if (phase === 'save') setStep(4);
           } else if (message.event === 'camera-filter' && typeof message.payload.filter === 'string') {
             const filter = CAMERA_FILTERS.find((option) => option.id === message.payload.filter);
@@ -874,6 +877,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       setRoomPhase('design');
       await sendRoomState('session-phase', { phase: 'design' });
     }
+    if (isDuo) stopCamera();
     setStep(3);
   }
 
@@ -1018,7 +1022,6 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       setSelectedPhotoForRetake((current) => current === index ? null : current);
       setCameraError('');
       if (completedRoomCapturesRef.current.size >= photoLimit) {
-        stopCamera();
         setShowFinalConfirmation(true);
       }
     } catch {
@@ -1162,7 +1165,13 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
 
   function startCapture() {
     if (isDuo) {
-      if (roomRole === 'host') void beginRoomCapture();
+      if (roomRole === 'host') {
+        if (!roomParticipantDetails.some((participant) => participant.role === 'guest' && participant.cameraReady)) {
+          setRoomError('Ask your Guest to turn their camera back on before taking or retaking a photo.');
+          return;
+        }
+        void beginRoomCapture();
+      }
       return;
     }
     if (timerSeconds === 0) {
@@ -1679,6 +1688,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                   disabled={
                     !cameraReady ||
                     !layout ||
+                    (isDuo && !roomParticipantDetails.some((participant) => participant.role === 'guest' && participant.cameraReady)) ||
                     (photos.length >= photoLimit && selectedPhotoForRetake === null) ||
                     countdown !== null
                   }
@@ -1694,7 +1704,8 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                         ? 'All photos taken'
                         : 'Take photo'}
                 </button>}
-                {isDuo && roomRole === 'guest' && <p className={styles.hint}>The Host starts the shared countdown. You cannot start a capture from this screen.</p>}
+                {isDuo && roomRole === 'host' && !roomParticipantDetails.some((participant) => participant.role === 'guest' && participant.cameraReady) && <p className={styles.hint}>Ask your Guest to turn their camera on before capturing or retaking a photo.</p>}
+                {isDuo && roomRole === 'guest' && <p className={styles.hint}>{!cameraReady && selectedPhotoForRetake !== null ? 'Turn your camera back on so the Host can capture your retake.' : 'The Host starts the shared countdown. You cannot start a capture from this screen.'}</p>}
                 {isDuo && roomRole === 'guest' && selectedPhotoForRetake !== null && <button className={styles.textButton} onClick={() => void requestRetake(selectedPhotoForRetake)} type="button">Request retake for photo {selectedPhotoForRetake + 1}</button>}
                 {countdown !== null && (!isDuo || roomRole === 'host') && (
                   <button className={styles.textButton} onClick={cancelCountdown} type="button">
