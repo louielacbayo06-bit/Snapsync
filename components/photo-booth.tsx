@@ -98,11 +98,11 @@ function getRoomIceServers(): RTCIceServer[] {
   return iceServers;
 }
 
-function drawCover(context: CanvasRenderingContext2D, source: HTMLImageElement, width: number, height: number) {
-  const scale = Math.max(width / source.width, height / source.height);
+function drawContain(context: CanvasRenderingContext2D, source: HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const scale = Math.min(width / source.width, height / source.height);
   const drawWidth = source.width * scale;
   const drawHeight = source.height * scale;
-  context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+  context.drawImage(source, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
 function getFrameTheme(frameColor: FrameColor, customFrameColor: string) {
@@ -232,8 +232,11 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       });
       peerConnections.set(otherPeerId, connection);
       const localStream = streamRef.current;
-      const localTrack = localStream?.getVideoTracks()[0];
-      if (localStream && localTrack) connection.addTrack(localTrack, localStream);
+      const localTrack = localStream?.getVideoTracks().find((track) => track.readyState === 'live');
+      connection.addTransceiver(localTrack ?? 'video', {
+        direction: 'sendrecv',
+        ...(localTrack && localStream ? { streams: [localStream] } : {}),
+      });
       connection.onicecandidate = (event) => {
         if (!event.candidate || !channel) return;
         void channel.send({
@@ -625,7 +628,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       const track = streamRef.current.getVideoTracks()[0];
       if (!track || track.readyState !== 'live') setRoomError('Your camera is not sending video. Turn it off and on to reconnect.');
       for (const connection of peerConnectionsRef.current.values()) {
-        const sender = connection.getSenders().find((item) => item.track?.kind === 'video');
+        const sender = connection.getTransceivers().find((transceiver) => transceiver.receiver.track.kind === 'video')?.sender;
         if (sender && sender.track !== track) {
           void sender.replaceTrack(track ?? null).catch(() => {
             setRoomError('Your camera restarted but could not reconnect to your Guest. Please rejoin the room.');
@@ -991,11 +994,11 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       const secondImage = roomRoleRef.current === 'host' ? remoteImage : localImage;
       const hostImage = roomRoleRef.current === 'host' ? pair.local : pair.remote;
       const guestImage = roomRoleRef.current === 'host' ? pair.remote : pair.local;
-      drawCover(context, firstImage, canvas.width / 2, canvas.height);
-      context.save();
-      context.translate(canvas.width / 2, 0);
-      drawCover(context, secondImage, canvas.width / 2, canvas.height);
-      context.restore();
+      context.fillStyle = '#080811';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawContain(context, firstImage, 0, 0, canvas.width / 2, canvas.height);
+      drawContain(context, secondImage, canvas.width / 2, 0, canvas.width / 2, canvas.height);
+      if (roomCapturePairsRef.current.get(index) !== pair) return;
       const combinedPhoto = canvas.toDataURL('image/jpeg', 0.86);
       setDuoPhotoPairs((current) => {
         const next = [...current];
@@ -1019,8 +1022,10 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
         setShowFinalConfirmation(true);
       }
     } catch {
-      completedRoomCapturesRef.current.delete(index);
-      setCameraError('Could not combine both photos. Please retake this shot.');
+      if (roomCapturePairsRef.current.get(index) === pair) {
+        completedRoomCapturesRef.current.delete(index);
+        setCameraError('Could not combine both photos. Please retake this shot.');
+      }
     }
   }
   completeRoomCaptureRef.current = (index) => {
@@ -1524,8 +1529,14 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                 <section className={[styles.connectCard, styles.waitingCard].join(' ')}>
                   <span className={[styles.partnerIcon, partnerOnline ? styles.partnerReady : ''].filter(Boolean).join(' ')}><Icon name="users" /></span>
                   <h2>{roomRole === 'host' ? roomParticipantDetails.find((participant) => participant.role === 'guest')?.name ? `${roomParticipantDetails.find((participant) => participant.role === 'guest')?.name} joined` : 'Waiting for your Guest' : roomParticipantDetails.some((participant) => participant.role === 'host') ? `${hostName} is here` : 'The host hasn’t arrived yet'}</h2>
-                  {roomRole === 'host' && roomParticipantDetails.some((participant) => participant.role === 'guest') ? <div className={styles.localCameraPreview}>{remoteVideoStreams.size > 0 ? <video aria-label="Guest camera preview" autoPlay playsInline ref={(element) => { if (element) element.srcObject = remoteVideoStreams.values().next().value ?? null; }} /> : <span>Waiting for Guest camera…</span>}</div> : <p>Room status: {roomConnected ? 'connected' : 'connecting'}. The room link expires after 30 minutes of inactivity.</p>}
-                  {roomRole === 'host' && <p>{roomParticipantDetails.find((participant) => participant.role === 'guest')?.cameraReady ? 'Guest camera is ready.' : 'Start is enabled when the Guest joins and both cameras are ready.'}</p>}
+                  {roomRole === 'host' && roomParticipantDetails.some((participant) => participant.role === 'guest') ? <div className={styles.localCameraPreview}>{remoteVideoStreams.size > 0 ? <video aria-label="Guest camera preview" autoPlay muted playsInline ref={(element) => {
+                    if (!element) return;
+                    element.srcObject = remoteVideoStreams.values().next().value ?? null;
+                    void element.play().catch(() => {
+                      setRoomError('Your browser blocked the Guest camera preview. Allow video playback and refresh the room.');
+                    });
+                  }} /> : <span>Waiting for Guest camera…</span>}</div> : <p>Room status: {roomConnected ? 'connected' : 'connecting'}. The room link expires after 30 minutes of inactivity.</p>}
+                  {roomRole === 'host' && <p>{roomParticipantDetails.find((participant) => participant.role === 'guest')?.cameraReady ? remoteVideoStreams.size > 0 ? 'Guest video connected.' : 'Guest camera is ready · connecting video…' : 'Start is enabled when the Guest joins and both cameras are ready.'}</p>}
                 </section>
               </>
             )}

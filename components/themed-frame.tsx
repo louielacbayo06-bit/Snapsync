@@ -188,7 +188,7 @@ function seeded(index: number, seed: number) {
   return value - Math.floor(value);
 }
 
-function PhotoImage({ src, x, y, width, height, position, clipId }: {
+function PhotoImage({ src, x, y, width, height, position, clipId, fit = 'cover' }: {
   src: string;
   x: number;
   y: number;
@@ -196,6 +196,7 @@ function PhotoImage({ src, x, y, width, height, position, clipId }: {
   height: number;
   position: PhotoPosition;
   clipId: string;
+  fit?: 'cover' | 'contain';
 }) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -212,7 +213,11 @@ function PhotoImage({ src, x, y, width, height, position, clipId }: {
     return () => { active = false; };
   }, [src]);
 
-  const scale = dimensions ? Math.max(width / dimensions.width, height / dimensions.height) : 1;
+  const scale = dimensions
+    ? fit === 'contain'
+      ? Math.min(width / dimensions.width, height / dimensions.height)
+      : Math.max(width / dimensions.width, height / dimensions.height)
+    : 1;
   const drawnWidth = dimensions ? dimensions.width * scale : width;
   const drawnHeight = dimensions ? dimensions.height * scale : height;
   const imageX = x + (width - drawnWidth) * position.x / 100;
@@ -479,8 +484,8 @@ export function ThemedFrameSvg({
           <rect fill={theme.slotStyle.fill} height={slot.height} rx={radius} stroke={theme.slotStyle.borderColor} strokeWidth={theme.slotStyle.borderWidth} width={slot.width} x={slot.x} y={slot.y} />
           {pair ? (
             <>
-              <PhotoImage clipId={clipId} height={innerHeight} position={position} src={pair.host} width={innerWidth / 2} x={innerX} y={innerY} />
-              <PhotoImage clipId={clipId} height={innerHeight} position={position} src={pair.guest} width={innerWidth / 2} x={innerX + innerWidth / 2} y={innerY} />
+              <PhotoImage clipId={clipId} fit="contain" height={innerHeight} position={position} src={pair.host} width={innerWidth / 2} x={innerX} y={innerY} />
+              <PhotoImage clipId={clipId} fit="contain" height={innerHeight} position={position} src={pair.guest} width={innerWidth / 2} x={innerX + innerWidth / 2} y={innerY} />
               <path d={`M${innerX + innerWidth / 2} ${innerY}v${innerHeight}`} stroke={theme.slotStyle.borderColor} strokeOpacity=".7" strokeWidth="2" />
             </>
           ) : photo ? (
