@@ -5,7 +5,7 @@ import styles from './themed-frame.module.css';
 
 type ThemeId = 'classic' | 'birthday' | 'funny' | 'y2k' | 'love' | 'kawaii' | 'retro-film';
 export type FrameLayoutId = 'strip' | 'doubleStrip' | 'grid' | 'trio' | 'polaroid';
-type PhotoPosition = { x: number; y: number };
+type PhotoPosition = { x: number; y: number; zoom?: number };
 type PhotoPair = { host: string; guest: string } | undefined;
 type Background =
   | { type: 'solid'; color: string }
@@ -188,7 +188,7 @@ function seeded(index: number, seed: number) {
   return value - Math.floor(value);
 }
 
-function PhotoImage({ src, x, y, width, height, position, clipId, fit = 'cover' }: {
+function PhotoImage({ src, x, y, width, height, position, clipId }: {
   src: string;
   x: number;
   y: number;
@@ -196,7 +196,6 @@ function PhotoImage({ src, x, y, width, height, position, clipId, fit = 'cover' 
   height: number;
   position: PhotoPosition;
   clipId: string;
-  fit?: 'cover' | 'contain';
 }) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -213,11 +212,7 @@ function PhotoImage({ src, x, y, width, height, position, clipId, fit = 'cover' 
     return () => { active = false; };
   }, [src]);
 
-  const scale = dimensions
-    ? fit === 'contain'
-      ? Math.min(width / dimensions.width, height / dimensions.height)
-      : Math.max(width / dimensions.width, height / dimensions.height)
-    : 1;
+  const scale = dimensions ? Math.max(width / dimensions.width, height / dimensions.height) * Math.max(1, position.zoom ?? 1) : 1;
   const drawnWidth = dimensions ? dimensions.width * scale : width;
   const drawnHeight = dimensions ? dimensions.height * scale : height;
   const imageX = x + (width - drawnWidth) * position.x / 100;
@@ -233,6 +228,7 @@ function PhotoImage({ src, x, y, width, height, position, clipId, fit = 'cover' 
       data-fit-y={y}
       data-position-x={position.x}
       data-position-y={position.y}
+      data-zoom={Math.max(1, position.zoom ?? 1)}
       href={src}
       preserveAspectRatio="none"
       x={imageX}
@@ -445,7 +441,14 @@ export function ThemedFrameSvg({
           const inset = theme.slotStyle.borderWidth / 2;
           const slotWidth = slot.width - theme.slotStyle.borderWidth;
           const slotHeight = slot.height - theme.slotStyle.borderWidth;
-          return <clipPath id={`slot-${theme.id}-${index}`} key={index}><rect height={Math.max(1, slotHeight)} rx={Math.max(0, theme.slotStyle.cornerRadius - inset)} width={Math.max(1, slotWidth)} x={slot.x + inset} y={slot.y + inset} /></clipPath>;
+          const innerX = slot.x + inset;
+          const innerY = slot.y + inset;
+          const portrait = slotHeight > slotWidth;
+          return <g key={index}>
+            <clipPath id={`slot-${theme.id}-${index}`}><rect height={Math.max(1, slotHeight)} rx={Math.max(0, theme.slotStyle.cornerRadius - inset)} width={Math.max(1, slotWidth)} x={innerX} y={innerY} /></clipPath>
+            <clipPath id={`slot-${theme.id}-${index}-host`}><g clipPath={`url(#slot-${theme.id}-${index})`}><rect height={portrait ? slotHeight / 2 : slotHeight} width={portrait ? slotWidth : slotWidth / 2} x={innerX} y={innerY} /></g></clipPath>
+            <clipPath id={`slot-${theme.id}-${index}-guest`}><g clipPath={`url(#slot-${theme.id}-${index})`}><rect height={portrait ? slotHeight / 2 : slotHeight} width={portrait ? slotWidth : slotWidth / 2} x={portrait ? innerX : innerX + slotWidth / 2} y={portrait ? innerY + slotHeight / 2 : innerY} /></g></clipPath>
+          </g>;
         })}
       </defs>
       <rect fill={background} height={height} width={width} />
@@ -475,7 +478,7 @@ export function ThemedFrameSvg({
         const innerY = slot.y + inset;
         const innerWidth = slot.width - theme.slotStyle.borderWidth;
         const innerHeight = slot.height - theme.slotStyle.borderWidth;
-        const position = photoPositions[slot.photoIndex] ?? { x: 50, y: 50 };
+        const position = photoPositions[slot.photoIndex] ?? { x: 50, y: 35, zoom: 1 };
         const pair = duoPairs[slot.photoIndex];
         const photo = photos[slot.photoIndex];
         const radius = theme.slotStyle.cornerRadius;
@@ -484,9 +487,15 @@ export function ThemedFrameSvg({
           <rect fill={theme.slotStyle.fill} height={slot.height} rx={radius} stroke={theme.slotStyle.borderColor} strokeWidth={theme.slotStyle.borderWidth} width={slot.width} x={slot.x} y={slot.y} />
           {pair ? (
             <>
-              <PhotoImage clipId={clipId} fit="contain" height={innerHeight} position={position} src={pair.host} width={innerWidth / 2} x={innerX} y={innerY} />
-              <PhotoImage clipId={clipId} fit="contain" height={innerHeight} position={position} src={pair.guest} width={innerWidth / 2} x={innerX + innerWidth / 2} y={innerY} />
-              <path d={`M${innerX + innerWidth / 2} ${innerY}v${innerHeight}`} stroke={theme.slotStyle.borderColor} strokeOpacity=".7" strokeWidth="2" />
+              {innerHeight > innerWidth ? <>
+                <PhotoImage clipId={`${clipId}-host`} height={innerHeight / 2} position={position} src={pair.host} width={innerWidth} x={innerX} y={innerY} />
+                <PhotoImage clipId={`${clipId}-guest`} height={innerHeight / 2} position={position} src={pair.guest} width={innerWidth} x={innerX} y={innerY + innerHeight / 2} />
+                <path d={`M${innerX} ${innerY + innerHeight / 2}h${innerWidth}`} stroke={theme.slotStyle.borderColor} strokeOpacity=".7" strokeWidth="2" />
+              </> : <>
+                <PhotoImage clipId={`${clipId}-host`} height={innerHeight} position={position} src={pair.host} width={innerWidth / 2} x={innerX} y={innerY} />
+                <PhotoImage clipId={`${clipId}-guest`} height={innerHeight} position={position} src={pair.guest} width={innerWidth / 2} x={innerX + innerWidth / 2} y={innerY} />
+                <path d={`M${innerX + innerWidth / 2} ${innerY}v${innerHeight}`} stroke={theme.slotStyle.borderColor} strokeOpacity=".7" strokeWidth="2" />
+              </>}
             </>
           ) : photo ? (
             <PhotoImage clipId={clipId} height={innerHeight} position={position} src={photo} width={innerWidth} x={innerX} y={innerY} />

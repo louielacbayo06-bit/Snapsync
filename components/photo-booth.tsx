@@ -44,14 +44,7 @@ const PHOTO_LAYOUTS: { id: Layout; label: string; photoCount: number; descriptio
   { id: 'trio', label: 'Trio strip', photoCount: 3, description: '2 × 6 in · 3 shots' },
   { id: 'polaroid', label: 'Polaroid', photoCount: 1, description: '4 × 6 in · 1 shot' },
 ];
-const DUO_CAPTURE_SIZE: Record<Layout, { width: number; height: number }> = {
-  strip: { width: 560, height: 350 },
-  doubleStrip: { width: 520, height: 326 },
-  grid: { width: 535, height: 655 },
-  trio: { width: 520, height: 428 },
-  polaroid: { width: 480, height: 480 },
-};
-type PhotoPosition = { x: number; y: number };
+type PhotoPosition = { x: number; y: number; zoom?: number };
 type RoomRole = 'host' | 'guest';
 type RoomPhase = 'waiting' | 'photos' | 'design' | 'save' | 'ended';
 type RoomParticipant = { id: string; name: string; role: RoomRole; cameraReady: boolean };
@@ -150,13 +143,6 @@ async function getRoomIceServers(): Promise<RoomIceServerConfig> {
       error: 'The TURN provider could not be reached. Check the TURN credential URL and try again.',
     };
   }
-}
-
-function drawContain(context: CanvasRenderingContext2D, source: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const scale = Math.min(width / source.width, height / source.height);
-  const drawWidth = source.width * scale;
-  const drawHeight = source.height * scale;
-  context.drawImage(source, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight);
 }
 
 function getFrameTheme(frameColor: FrameColor, customFrameColor: string) {
@@ -1052,23 +1038,9 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     if (!pair?.local || !pair.remote) return;
     completedRoomCapturesRef.current.add(index);
     try {
-      const [localImage, remoteImage] = await Promise.all([loadImage(pair.local), loadImage(pair.remote)]);
-      const canvas = document.createElement('canvas');
-      const captureSize = DUO_CAPTURE_SIZE[layout ?? 'strip'];
-      canvas.width = captureSize.width;
-      canvas.height = captureSize.height;
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Photo canvas is unavailable.');
-      const firstImage = roomRoleRef.current === 'host' ? localImage : remoteImage;
-      const secondImage = roomRoleRef.current === 'host' ? remoteImage : localImage;
       const hostImage = roomRoleRef.current === 'host' ? pair.local : pair.remote;
       const guestImage = roomRoleRef.current === 'host' ? pair.remote : pair.local;
-      context.fillStyle = '#080811';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      drawContain(context, firstImage, 0, 0, canvas.width / 2, canvas.height);
-      drawContain(context, secondImage, canvas.width / 2, 0, canvas.width / 2, canvas.height);
       if (roomCapturePairsRef.current.get(index) !== pair) return;
-      const combinedPhoto = canvas.toDataURL('image/jpeg', 0.86);
       setDuoPhotoPairs((current) => {
         const next = [...current];
         next[index] = { host: hostImage, guest: guestImage };
@@ -1076,12 +1048,12 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
       });
       setPhotos((current) => {
         const next = [...current];
-        next[index] = combinedPhoto;
+        next[index] = hostImage;
         return next;
       });
       setPhotoPositions((current) => {
         const next = [...current];
-        next[index] = { x: 50, y: 50 };
+        next[index] = { x: 50, y: 35, zoom: 1 };
         return next;
       });
       setSelectedPhotoForRetake((current) => current === index ? null : current);
@@ -1092,7 +1064,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     } catch {
       if (roomCapturePairsRef.current.get(index) === pair) {
         completedRoomCapturesRef.current.delete(index);
-        setCameraError('Could not combine both photos. Please retake this shot.');
+        setCameraError('Could not prepare both photos. Please retake this shot.');
       }
     }
   }
@@ -1126,25 +1098,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     context.filter = 'none';
     const photo = canvas.toDataURL('image/jpeg', 0.88);
     if (isDuo && roomShotIndex !== undefined) {
-      const portrait = document.createElement('canvas');
-      portrait.width = 360;
-      portrait.height = 480;
-      const portraitContext = portrait.getContext('2d');
-      if (!portraitContext) {
-        setCameraError('Could not prepare your photo to share.');
-        return;
-      }
-      const scale = Math.max(portrait.width / canvas.width, portrait.height / canvas.height);
-      const drawnWidth = canvas.width * scale;
-      const drawnHeight = canvas.height * scale;
-      portraitContext.drawImage(
-        canvas,
-        (portrait.width - drawnWidth) / 2,
-        (portrait.height - drawnHeight) / 2,
-        drawnWidth,
-        drawnHeight,
-      );
-      const sharedPhoto = portrait.toDataURL('image/jpeg', 0.62);
+      const sharedPhoto = photo;
       roomCapturePairsRef.current.set(roomShotIndex, {
         ...roomCapturePairsRef.current.get(roomShotIndex),
         local: sharedPhoto,
@@ -1163,11 +1117,11 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     if (isReplacingPhoto) {
       const index = selectedPhotoForRetake;
       setPhotos((current) => current.map((currentPhoto, photoIndex) => photoIndex === index ? photo : currentPhoto));
-      setPhotoPositions((current) => current.map((position, photoIndex) => photoIndex === index ? { x: 50, y: 50 } : position));
+      setPhotoPositions((current) => current.map((position, photoIndex) => photoIndex === index ? { x: 50, y: 35, zoom: 1 } : position));
       setSelectedPhotoForRetake(null);
     } else {
       setPhotos((current) => [...current, photo]);
-      setPhotoPositions((current) => [...current, { x: 50, y: 50 }]);
+      setPhotoPositions((current) => [...current, { x: 50, y: 35, zoom: 1 }]);
     }
 
     setCameraError('');
@@ -1280,7 +1234,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
   }
 
   function updatePhotoPosition(axis: keyof PhotoPosition, value: number) {
-    const current = photoPositions[selectedPhoto] ?? { x: 50, y: 50 };
+    const current = photoPositions[selectedPhoto] ?? { x: 50, y: 35, zoom: 1 };
     const nextPosition = { ...current, [axis]: value };
     setPhotoPositions((positions) => alignAllPhotos
       ? photos.map(() => nextPosition)
@@ -1356,7 +1310,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           const y = Number(node.dataset.fitY);
           const positionX = Number(node.dataset.positionX);
           const positionY = Number(node.dataset.positionY);
-          const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+          const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight) * Math.max(1, Number(node.dataset.zoom ?? 1));
           const drawWidth = image.naturalWidth * scale;
           const drawHeight = image.naturalHeight * scale;
           node.setAttribute('x', String(x + (width - drawWidth) * positionX / 100));
@@ -1466,7 +1420,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
   ] as const;
   const allCapturedFrames = photos.map((image, index) => ({
     image,
-    position: photoPositions[index] ?? { x: 50, y: 50 },
+    position: photoPositions[index] ?? { x: 50, y: 35, zoom: 1 },
   }));
   const allCaptured = allCapturedFrames.map(({ image }) => image);
   const layoutLabel = PHOTO_LAYOUTS.find((option) => option.id === layout)?.label ?? 'Photos';
@@ -2014,7 +1968,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
                   </div>
                 </div>
               </div>
-              <div className={styles.optionGroup}><h2><i>02</i> Move your photos</h2>{photos.length > 0 ? <><p className={styles.hint}>{isDuo ? 'Each Duo shot contains separate Host and Guest photos. Move both people together inside the selected frame.' : 'Select a photo and adjust its position inside the frame.'}</p><div className={styles.shotChoices}>{photos.map((photo, index) => <button aria-pressed={selectedPhoto === index} className={selectedPhoto === index ? styles.selectedShot : ''} key={index + '-' + photo.slice(-16)} onClick={() => setSelectedPhoto(index)} type="button"><img alt="" src={photo} />Photo {index + 1}</button>)}</div><label className={styles.adjustAllLabel}><input checked={alignAllPhotos} onChange={(event) => setAlignAllPhotos(event.target.checked)} type="checkbox" /> Move all photos together</label><label className={styles.sliderLabel}>Left and right<input max="100" min="0" onChange={(event) => updatePhotoPosition('x', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).x} /></label><label className={styles.sliderLabel}>Up and down<input max="100" min="0" onChange={(event) => updatePhotoPosition('y', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 50 }).y} /></label></> : <p className={styles.hint}>Take a photo first, then slide to move it inside its frame.</p>}</div>
+              <div className={styles.optionGroup}><h2><i>02</i> Move your photos</h2>{photos.length > 0 ? <><p className={styles.hint}>{isDuo ? 'Each Duo shot contains separate Host and Guest photos. Move both people together inside the selected frame.' : 'Select a photo and adjust its position inside the frame.'}</p><div className={styles.shotChoices}>{photos.map((photo, index) => <button aria-pressed={selectedPhoto === index} className={selectedPhoto === index ? styles.selectedShot : ''} key={index + '-' + photo.slice(-16)} onClick={() => setSelectedPhoto(index)} type="button"><img alt="" src={photo} />Photo {index + 1}</button>)}</div><label className={styles.adjustAllLabel}><input checked={alignAllPhotos} onChange={(event) => setAlignAllPhotos(event.target.checked)} type="checkbox" /> Move all photos together</label><label className={styles.sliderLabel}>Left and right<input max="100" min="0" onChange={(event) => updatePhotoPosition('x', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 35, zoom: 1 }).x} /></label><label className={styles.sliderLabel}>Up and down<input max="100" min="0" onChange={(event) => updatePhotoPosition('y', Number(event.target.value))} type="range" value={(photoPositions[selectedPhoto] ?? { x: 50, y: 35, zoom: 1 }).y} /></label><label className={styles.sliderLabel}>Zoom<input max="3" min="1" onChange={(event) => setPhotoPositions((positions) => { const next = { ...(positions[selectedPhoto] ?? { x: 50, y: 35 }), zoom: Math.max(1, Number(event.target.value)) }; return alignAllPhotos ? photos.map(() => next) : positions.map((position, index) => index === selectedPhoto ? next : position); })} step="0.01" type="range" value={Math.max(1, photoPositions[selectedPhoto]?.zoom ?? 1)} /></label></> : <p className={styles.hint}>Take a photo first, then slide to move it inside its frame.</p>}</div>
               <div className={styles.optionGroup}><h2><i>03</i> Your photo layout</h2><p className={styles.selectedLayoutSummary}>{PHOTO_LAYOUTS.find((option) => option.id === layout)?.label} · {photoLimit} {photoLimit === 1 ? 'photo' : 'photos'}</p><p className={styles.hint}>Your layout controls the photo count and positions. Themes add colors, text, and decorations.</p></div>
               <div className={styles.optionGroup}>
                 <h2><i>04</i> Text on frame</h2>
