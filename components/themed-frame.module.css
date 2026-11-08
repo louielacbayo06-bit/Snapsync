@@ -17,7 +17,7 @@
   min-height: 0;
   border: 1px solid;
   border-radius: 2px;
-  background-color: rgb(255 255 255 / 94%) !important;
+  background-color: rgb(255 255 255 / 94%);
 }
 
 .themeCardPreview i:first-child {

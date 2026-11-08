@@ -169,6 +169,43 @@ function loadImage(source: string) {
   });
 }
 
+async function inlineThemeFonts(svg: SVGSVGElement) {
+  const fontFaces: string[] = [];
+  await Promise.all(Array.from(document.styleSheets).map(async (sheet) => {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      return;
+    }
+    await Promise.all(Array.from(rules).filter((rule) => rule.type === CSSRule.FONT_FACE_RULE).map(async (rule) => {
+      const face = rule as CSSFontFaceRule;
+      const family = face.style.getPropertyValue('font-family').replaceAll(/["']/g, '').toLowerCase();
+      if (!family.includes('lora') && !family.includes('poppins')) return;
+      const unicodeRange = face.style.getPropertyValue('unicode-range');
+      if (unicodeRange && !/(u\+0-ff|u\+\?\?)/i.test(unicodeRange)) return;
+      const source = face.style.getPropertyValue('src');
+      const match = /url\((?:["']?)([^)"']+)(?:["']?)\)/.exec(source);
+      if (!match) return;
+      const fontUrl = new URL(match[1], sheet.href ?? window.location.href);
+      const response = await fetch(fontUrl, { cache: 'force-cache' });
+      if (!response.ok) throw new Error('A theme font could not be prepared for export.');
+      const fontBlob = await response.blob();
+      const fontData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('A theme font could not be prepared for export.'));
+        reader.readAsDataURL(fontBlob);
+      });
+      fontFaces.push(rule.cssText.replace(match[0], `url("${fontData}")`));
+    }));
+  }));
+  if (fontFaces.length === 0) throw new Error('Lora and Poppins could not be prepared for export.');
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.textContent = fontFaces.join('\n');
+  svg.insertBefore(style, svg.firstChild);
+}
+
 export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: string; room?: string }) {
   const isDuo = mode === 'duo';
   const router = useRouter();
@@ -1297,6 +1334,16 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
     try {
       await document.fonts.ready;
       const svg = frameSvgRef.current.cloneNode(true) as SVGSVGElement;
+      const computedFonts = getComputedStyle(document.documentElement);
+      svg.style.setProperty('--font-lora', computedFonts.getPropertyValue('--font-lora').trim());
+      svg.style.setProperty('--font-poppins', computedFonts.getPropertyValue('--font-poppins').trim());
+      const loraFamily = computedFonts.getPropertyValue('--font-lora').trim();
+      const poppinsFamily = computedFonts.getPropertyValue('--font-poppins').trim();
+      await Promise.all([
+        ...(['normal 104px', 'italic 104px'].map((size) => document.fonts.load(`${size} ${loraFamily}`))),
+        ...(['500 17px', '700 30px', 'italic 22px', 'italic 700 60px'].map((size) => document.fonts.load(`${size} ${poppinsFamily}`))),
+      ]);
+      await document.fonts.ready;
       const photoNodes = Array.from(svg.querySelectorAll<SVGImageElement>('image[data-frame-photo]'));
       const stickerNodes = Array.from(svg.querySelectorAll<SVGImageElement>('image[data-frame-sticker]'));
       await Promise.all([
@@ -1331,6 +1378,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           node.setAttribute('href', imageCanvas.toDataURL('image/png'));
         }),
       ]);
+      if (FRAME_THEMES[frameThemeId].design) await inlineThemeFonts(svg);
       const exportWidth = FRAME_LAYOUTS[layout].width * 2;
       svg.setAttribute('width', String(exportWidth));
       svg.setAttribute('height', '3600');
@@ -1908,19 +1956,28 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
               <div className={styles.optionGroup}>
                 <h2><i>01</i> Theme</h2>
                 <p className={styles.hint}>Choose a frame style for your photos.</p>
-                <div aria-label="Theme" className={styles.frameThemeChoices}>
-                  {(Object.keys(FRAME_THEMES) as FrameThemeId[]).map((themeId) => (
-                    <button
-                      aria-pressed={frameThemeId === themeId}
-                      className={`${styles.frameThemeChoice} ${frameThemeId === themeId ? styles.selectedFrameTheme : ''}`}
-                      key={themeId}
-                      onClick={() => setFrameThemeId(themeId)}
-                      type="button"
-                    >
-                      <ThemeCardPreview themeId={themeId} />
-                      <span>{FRAME_THEMES[themeId].label}</span>
-                    </button>
-                  ))}
+                <div aria-label="Theme" className={styles.frameThemePicker}>
+                  {['Classic', 'Minimal', 'Aesthetic', 'Fun', 'Seasonal'].map((group) => {
+                    const groupThemes = (Object.keys(FRAME_THEMES) as FrameThemeId[]).filter((themeId) => FRAME_THEMES[themeId].group === group);
+                    if (groupThemes.length === 0) return null;
+                    return <section className={styles.frameThemeGroup} key={group}>
+                      <h3>{group}</h3>
+                      <div className={styles.frameThemeChoices}>
+                        {groupThemes.map((themeId) => (
+                          <button
+                            aria-pressed={frameThemeId === themeId}
+                            className={`${styles.frameThemeChoice} ${frameThemeId === themeId ? styles.selectedFrameTheme : ''}`}
+                            key={themeId}
+                            onClick={() => setFrameThemeId(themeId)}
+                            type="button"
+                          >
+                            <ThemeCardPreview themeId={themeId} />
+                            <span>{FRAME_THEMES[themeId].label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>;
+                  })}
                 </div>
               </div>
               <div aria-disabled={frameThemeId !== 'classic'} className={`${styles.optionGroup} ${frameThemeId !== 'classic' ? styles.disabledFrameColors : ''}`}>

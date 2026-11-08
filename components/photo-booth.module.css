@@ -125,7 +125,10 @@
 .messageInput:focus-visible { outline: 3px solid #d6ff5f; outline-offset: 2px; }
 .customizePanel { display: flex; flex-direction: column; padding: 26px; }
 .frameColorChoices { display: flex; flex-wrap: wrap; gap: 10px; }
-.frameThemeChoices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.frameThemePicker { max-height: 390px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 5px 4px 0; scrollbar-color: rgb(214 255 95 / 45%) rgb(255 255 255 / 5%); scrollbar-width: thin; }
+.frameThemeGroup + .frameThemeGroup { margin-top: 12px; }
+.frameThemeGroup h3 { margin: 0 0 7px; color: #a9a5bd; font-size: .7rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.frameThemeChoices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .frameThemeChoice { display: flex; min-width: 0; min-height: 84px; align-items: center; gap: 8px; padding: 7px; border: 1px solid rgb(255 255 255 / 13%); border-radius: 13px; background: rgb(255 255 255 / 4%); color: #d8d5e3; cursor: pointer; font: inherit; font-size: .72rem; text-align: left; transition: border-color 150ms ease, background 150ms ease, transform 150ms ease; }
 .frameThemeChoice:hover { transform: translateY(-2px); border-color: rgb(214 255 95 / 55%); }
 .selectedFrameTheme { border-color: #d6ff5f; background: rgb(214 255 95 / 9%); color: white; box-shadow: 0 0 0 1px rgb(214 255 95 / 18%); }
@@ -270,3 +273,4 @@
   .captureLayoutChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 520px) { .shotChoices { gap: 4px; } .stickerChoices { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .frameThemePicker { max-height: 320px; } .frameThemeChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); } .frameThemeChoice { min-height: 74px; } }
