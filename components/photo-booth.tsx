@@ -1378,7 +1378,7 @@ export function PhotoBooth({ mode = 'solo', room: incomingRoom = '' }: { mode?: 
           node.setAttribute('href', imageCanvas.toDataURL('image/png'));
         }),
       ]);
-      if (FRAME_THEMES[frameThemeId].design) await inlineThemeFonts(svg);
+      if (FRAME_THEMES[frameThemeId].design || frameThemeId === 'classic') await inlineThemeFonts(svg);
       const exportWidth = FRAME_LAYOUTS[layout].width * 2;
       svg.setAttribute('width', String(exportWidth));
       svg.setAttribute('height', '3600');

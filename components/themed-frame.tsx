@@ -50,7 +50,7 @@ export const FRAME_THEMES: Record<string, ThemeConfig> = {
     background: { type: 'solid', color: '#000000' },
     slotStyle: { borderColor: 'transparent', borderWidth: 0, cornerRadius: 0, fill: '#FFFFFF' },
     textColors: { primary: '#FFFFFF', secondary: '#FFFFFF' },
-    fonts: { title: 'Georgia, serif', body: 'Arial, sans-serif', footer: 'Arial, sans-serif' },
+    fonts: { title: 'var(--font-lora), Georgia, serif', body: 'var(--font-poppins), Arial, sans-serif', footer: 'var(--font-poppins), Arial, sans-serif' },
     decorations: [],
     defaultMessage: 'SnapSync',
     subtitle: 'SNAP · SYNC · SMILE',
@@ -230,36 +230,135 @@ export const FRAME_LAYOUTS: Record<FrameLayoutId, FrameLayout> = {
   doubleStrip: {
     width: 1200,
     height: HEIGHT,
-    captionStart: 1456,
-    slots: [40, 394, 748, 1102].flatMap((y, photoIndex) => [
-      { x: 40, y, width: 520, height: 326, photoIndex },
-      { x: 640, y, width: 520, height: 326, photoIndex },
+    captionStart: 1472,
+    slots: [40, 404, 768, 1132].flatMap((y, photoIndex) => [
+      { x: 40, y, width: 520, height: 340, photoIndex },
+      { x: 640, y, width: 520, height: 340, photoIndex },
     ]),
   },
   grid: {
     width: 1200,
     height: HEIGHT,
-    captionStart: 1400,
+    captionStart: 1584,
     slots: [
-      { x: 40, y: 40, width: 535, height: 655, photoIndex: 0 },
-      { x: 625, y: 40, width: 535, height: 655, photoIndex: 1 },
-      { x: 40, y: 715, width: 535, height: 655, photoIndex: 2 },
-      { x: 625, y: 715, width: 535, height: 655, photoIndex: 3 },
+      { x: 40, y: 40, width: 535, height: 760, photoIndex: 0 },
+      { x: 625, y: 40, width: 535, height: 760, photoIndex: 1 },
+      { x: 40, y: 824, width: 535, height: 760, photoIndex: 2 },
+      { x: 625, y: 824, width: 535, height: 760, photoIndex: 3 },
     ],
   },
   trio: {
     width: 600,
     height: HEIGHT,
-    captionStart: 1408,
-    slots: [40, 496, 952].map((y, photoIndex) => ({ x: 40, y, width: 520, height: 428, photoIndex })),
+    captionStart: 1624,
+    slots: [40, 576, 1112].map((y, photoIndex) => ({ x: 40, y, width: 520, height: 512, photoIndex })),
   },
   polaroid: {
     width: 1200,
     height: HEIGHT,
-    captionStart: 1110,
-    slots: [{ x: 90, y: 90, width: 1020, height: 1020, photoIndex: 0 }],
+    captionStart: 1500,
+    slots: [{ x: 90, y: 90, width: 1020, height: 1410, photoIndex: 0 }],
   },
 };
+
+function getFrameLayout(layoutId: FrameLayoutId, themeId: FrameThemeId, showText: boolean): FrameLayout {
+  const layout = FRAME_LAYOUTS[layoutId];
+  if (themeId === 'classic' && (layoutId === 'strip' || layoutId === 'doubleStrip')) {
+    const height = showText ? 340 : 414;
+    const firstY = 40;
+    const gap = 24;
+    return {
+      ...layout,
+      captionStart: showText ? 1472 : 1768,
+      slots: Array.from({ length: 4 }, (_, photoIndex) => {
+        const y = firstY + photoIndex * (height + gap);
+        const slot = { y, width: 520, height, photoIndex };
+        return layoutId === 'strip'
+          ? { ...slot, x: 40 }
+          : [{ ...slot, x: 40 }, { ...slot, x: 640 }];
+      }).flat(),
+    };
+  }
+
+  if (themeId !== 'classic') {
+    const theme = FRAME_THEMES[themeId];
+    const hasFooterDecoration = theme.decorations.some((decoration) =>
+      decoration.kind === 'cake' || decoration.kind === 'interlocking-hearts' || decoration.kind === 'rainbow');
+    if (layoutId === 'strip' && !(theme.design && showText)) {
+      const hasHeaderDecoration = theme.decorations.some((decoration) => decoration.kind === 'bunting');
+      const preserveFooter = showText || hasFooterDecoration;
+      const height = preserveFooter ? (hasHeaderDecoration ? 340 : 355) : 414;
+      const firstY = hasHeaderDecoration ? 90 : 40;
+      const slots = [0, 1, 2, 3].map((photoIndex) => ({
+        x: 40,
+        y: firstY + photoIndex * (height + 24),
+        width: 520,
+        height,
+        photoIndex,
+      }));
+
+      return {
+        ...layout,
+        captionStart: slots[slots.length - 1].y + height,
+        slots,
+      };
+    }
+
+    if (!showText && !hasFooterDecoration) {
+      if (layoutId === 'doubleStrip') {
+        return {
+          ...layout,
+          captionStart: 1768,
+          slots: [40, 478, 916, 1354].flatMap((y, photoIndex) => [
+            { x: 40, y, width: 520, height: 414, photoIndex },
+            { x: 640, y, width: 520, height: 414, photoIndex },
+          ]),
+        };
+      }
+      if (layoutId === 'grid') {
+        return {
+          ...layout,
+          captionStart: 1744,
+          slots: [
+            { x: 40, y: 40, width: 535, height: 840, photoIndex: 0 },
+            { x: 625, y: 40, width: 535, height: 840, photoIndex: 1 },
+            { x: 40, y: 904, width: 535, height: 840, photoIndex: 2 },
+            { x: 625, y: 904, width: 535, height: 840, photoIndex: 3 },
+          ],
+        };
+      }
+      if (layoutId === 'trio') {
+        return { ...layout, captionStart: 1759, slots: [40, 621, 1202].map((y, photoIndex) => ({ x: 40, y, width: 520, height: 557, photoIndex })) };
+      }
+      if (layoutId === 'polaroid') {
+        return { ...layout, captionStart: 1710, slots: [{ x: 90, y: 90, width: 1020, height: 1620, photoIndex: 0 }] };
+      }
+    }
+
+    return layout;
+  }
+
+  if (!showText) {
+    if (layoutId === 'trio') {
+      return { ...layout, captionStart: 1759, slots: [40, 621, 1202].map((y, photoIndex) => ({ x: 40, y, width: 520, height: 557, photoIndex })) };
+    }
+    if (layoutId === 'grid') {
+      return {
+        ...layout,
+        captionStart: 1744,
+        slots: [
+          { x: 40, y: 40, width: 535, height: 840, photoIndex: 0 },
+          { x: 625, y: 40, width: 535, height: 840, photoIndex: 1 },
+          { x: 40, y: 904, width: 535, height: 840, photoIndex: 2 },
+          { x: 625, y: 904, width: 535, height: 840, photoIndex: 3 },
+        ],
+      };
+    }
+    return { ...layout, captionStart: 1710, slots: [{ x: 90, y: 90, width: 1020, height: 1620, photoIndex: 0 }] };
+  }
+
+  return layout;
+}
 
 function seeded(index: number, seed: number) {
   const value = Math.sin(index * 127.1 + seed * 311.7) * 43758.5453;
@@ -635,7 +734,7 @@ export function ThemedFrameSvg({
   svgRef: React.RefObject<SVGSVGElement | null>;
 }) {
   const theme = FRAME_THEMES[themeId];
-  const layout = FRAME_LAYOUTS[layoutId];
+  const layout = getFrameLayout(layoutId, themeId, showText);
   const width = layout.width;
   const height = layout.height;
   const background = themeId === 'classic' ? frameColor : theme.background.type === 'solid' ? theme.background.color : `url(#${theme.id}-background)`;
@@ -737,7 +836,7 @@ export function ThemedFrameSvg({
       {!theme.design && showText && footerTitle && <g aria-hidden="true"><text fill={theme.textColors.primary} fontFamily={theme.fonts.footer} fontSize={Math.min(themeId === 'y2k' ? 72 : 54, captionHeight * 0.18)} fontStyle="italic" paintOrder="stroke" stroke={theme.textColors.outline ?? 'none'} strokeWidth={theme.textColors.outline ? 5 : 0} textAnchor="middle" x={width / 2} y={footerY}>{footerTitle}</text>{themeId === 'y2k' && <text fill={theme.textColors.primary} fontFamily={theme.fonts.body} fontSize={Math.min(25, captionHeight * 0.07)} fontWeight="800" paintOrder="stroke" stroke={theme.textColors.outline} strokeWidth="5" textAnchor="middle" x={width / 2} y={footerY + Math.min(48, captionHeight * 0.14)}>{theme.subtitle}</text>}</g>}
       {!theme.design && themeId === 'birthday' && showText && <text fill={theme.textColors.secondary} fontFamily={theme.fonts.footer} fontSize={Math.min(22, captionHeight * 0.07)} fontStyle="italic" fontWeight="700" textAnchor="middle" x={width / 2} y={height - 18}>{theme.subtitle}</text>}
       {!theme.design && themeId === 'retro-film' && showText && <g aria-hidden="true"><text fill={theme.textColors.secondary} fontFamily={theme.fonts.body} fontSize={Math.min(52, captionHeight * 0.15)} fontWeight="800" letterSpacing="4" textAnchor="middle" x={width / 2} y={footerY}>{new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(new Date()).replaceAll('/', ' · ')}</text><text fill={theme.textColors.primary} fontFamily={theme.fonts.body} fontSize={Math.min(21, captionHeight * 0.06)} fontWeight="700" letterSpacing="5" textAnchor="middle" x={width / 2} y={height - 24}>DEVELOPED BY SNAPSYNC</text></g>}
-      {!theme.design && showText && themeId === 'classic' && <g aria-hidden="true"><text fill={frameTextColor} fontFamily={theme.fonts.body} fontSize={Math.min(30, captionHeight * 0.09)} fontWeight="700" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.34}>{customMessage.trim()}</text><text fill={frameTextColor} fontFamily={theme.fonts.title} fontSize={Math.min(54, captionHeight * 0.17)} fontStyle="italic" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.58}>SnapSync</text><text fill={frameTextColor} fontFamily={theme.fonts.body} fontSize={Math.min(18, captionHeight * 0.055)} fontWeight="700" letterSpacing="4" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.77}>SNAP · SYNC · SMILE</text></g>}
+      {!theme.design && showText && themeId === 'classic' && <g aria-hidden="true"><text fill={frameTextColor} fontFamily={theme.fonts.body} fontSize={Math.min(30, captionHeight * 0.09)} fontWeight="700" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.15}>{customMessage.trim()}</text><text fill={frameTextColor} fontFamily={theme.fonts.title} fontSize={Math.min(92, captionHeight * 0.28)} fontStyle="italic" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.36}>SnapSync</text><text fill={frameTextColor} fontFamily={theme.fonts.body} fontSize={Math.min(22, captionHeight * 0.07)} fontWeight="700" letterSpacing="5" textAnchor="middle" x={width / 2} y={layout.captionStart + captionHeight * 0.665}>SNAP · SYNC · SMILE</text></g>}
       {stickers.map((sticker) => {
         const size = width * sticker.size / 100;
         const x = width * sticker.x / 100;
